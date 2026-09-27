@@ -15,30 +15,19 @@ def insert_run(window_id, fabric_id, result, note=""):
         c.close()
 
 def list_runs(limit=50):
-    from app.services.pattern_open import open_as_raw_cut
-
     c = connect()
     try:
         rows = c.execute(
-            """SELECT r.*, w.name window_name, f.name fabric_name,
-                   w.width window_width, w.height window_height, w.fullness window_fullness,
-                   f.fabric_width fabric_width, f.hem_top hem_top, f.hem_bottom hem_bottom
+            """SELECT r.*, w.name window_name, f.name fabric_name
             FROM calc_runs r
             LEFT JOIN windows w ON w.id=r.window_id LEFT JOIN fabrics f ON f.id=r.fabric_id
             ORDER BY r.id DESC LIMIT ?""", (limit,)).fetchall()
         out = []
         for row in rows:
             d = dict(row)
-            dims = {
-                "width": d.get("window_width"),
-                "height": d.get("window_height"),
-                "fullness": d.get("window_fullness"),
-                "fabric_width": d.get("fabric_width"),
-                "hem_top": d.get("hem_top"),
-                "hem_bottom": d.get("hem_bottom"),
-            }
-            raw = json.loads(d.pop("result_json"))
-            d["result"] = open_as_raw_cut(raw, dims)
+            # 回看口径：直接回放落库那一版结果（含按花高对齐的裁高/米数），
+            # 不随布料默认花高或窗布当前尺寸重算。
+            d["result"] = json.loads(d.pop("result_json"))
             out.append(d)
         return out
     finally:

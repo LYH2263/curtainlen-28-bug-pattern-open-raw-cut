@@ -16,5 +16,5 @@ onMounted(async () => { items.value = (await getJSON('/api/runs')).items })
     :pattern-repeat-cm="r.result?.pattern_repeat_cm ?? 0"
   />
 </li></ul>
-<p class="hint">开放视图保留花高字段；裁高取毛裁高，米数随列表接口返回。</p>
+<p class="hint">回看按编号固化：裁高/米数为写入时按花高对齐后的结果，不随后续改动重算。</p>
 </div></template>
