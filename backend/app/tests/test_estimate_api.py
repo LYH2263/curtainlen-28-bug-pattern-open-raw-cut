@@ -84,6 +84,53 @@ def test_save_freezes_repeat_and_later_default_change_does_not_rewrite(client):
     assert later.json()["pattern_repeat_cm"] == 80
 
 
+def test_saved_result_fields_identical_on_review(client):
+    # 保存响应里的结果必须与按编号回看的 result 逐字段一致（不能退回毛裁口径）
+    r = client.post("/api/estimate", json={"window_id": 1, "fabric_id": 1, "save": True, "pattern_repeat_cm": 64})
+    assert r.status_code == 200
+    payload = r.json()
+    run_id = payload["run_id"]
+    expected = {k: payload[k] for k in (
+        "finished_width", "panels", "gross_cut_height", "pattern_repeat_cm",
+        "cut_height", "meters", "fabric_width",
+    )}
+
+    row = next(x for x in client.get("/api/runs").json()["items"] if x["id"] == run_id)
+    assert row["result"] == expected
+    assert "open_pattern_raw" not in row["result"]
+
+
+def test_default_repeat_change_only_affects_new_orders(client):
+    # 先以 64cm 写入一单（对齐裁高 3.2 / 16.0m）
+    r = client.post("/api/estimate", json={"window_id": 1, "fabric_id": 1, "save": True, "pattern_repeat_cm": 64})
+    old_id = r.json()["run_id"]
+
+    # 只改布料默认花高为 90cm，不显式传花高的新单须按 90cm 对齐：
+    # 2.85/0.9=3.17 → 4 跳 → 3.6m，5 幅 → 18.0m
+    p = client.patch("/api/fabrics/1", json={"pattern_repeat_cm": 90})
+    assert p.status_code == 200
+
+    later = client.get("/api/estimate", params={"window_id": 1, "fabric_id": 1})
+    assert later.status_code == 200
+    assert later.json()["pattern_repeat_cm"] == 90
+    assert later.json()["cut_height"] == 3.6
+    assert later.json()["meters"] == 18.0
+
+    r2 = client.post("/api/estimate", json={"window_id": 1, "fabric_id": 1, "save": True})
+    new_id = r2.json()["run_id"]
+    assert r2.json()["pattern_repeat_cm"] == 90
+    assert r2.json()["cut_height"] == 3.6
+
+    items = {x["id"]: x["result"] for x in client.get("/api/runs").json()["items"]}
+    # 旧编号仍是写入时的对齐裁高，订货米不漂
+    assert items[old_id]["pattern_repeat_cm"] == 64
+    assert items[old_id]["cut_height"] == 3.2
+    assert items[old_id]["meters"] == 16.0
+    assert items[new_id]["pattern_repeat_cm"] == 90
+    assert items[new_id]["cut_height"] == 3.6
+    assert items[new_id]["meters"] == 18.0
+
+
 def test_patch_negative_repeat_rejected(client):
     r = client.patch("/api/fabrics/1", json={"pattern_repeat_cm": -1})
     assert r.status_code == 422
